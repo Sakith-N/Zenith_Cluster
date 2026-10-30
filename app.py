@@ -3,14 +3,14 @@ import numpy as np
 import cv2
 import joblib
 import tensorflow as tf
-from PIL import Image
+from streamlit_drawable_canvas import st_canvas
 
 # --- Page Config ---
 st.set_page_config(page_title="Zenith Cluster", layout="centered")
 
 st.title("🚀 EE5130: Zenith Cluster Exhibition")
 st.caption("Developed by: Sakith Nethkalana")
-st.write("Upload a clear photo of handwritten digits (e.g., 2026) to see the Ensemble Model predictions.")
+st.write("Draw digits on the canvas below and click **Predict Canvas**.")
 
 # --- Load Models (Cached for speed) ---
 @st.cache_resource
@@ -61,44 +61,57 @@ def extract_digit_bounding_boxes(img_np):
             bounding_boxes.append((x, y, w, h))
     return sorted(bounding_boxes, key=lambda b: b[0])
 
-# --- UI Image Upload ---
-uploaded_file = st.file_uploader("Choose an image with digits (PNG, JPG)", type=["png", "jpg", "jpeg"])
+# --- UI Canvas for Drawing ---
+canvas_result = st_canvas(
+    fill_color="black",
+    stroke_width=15,
+    stroke_color="white",
+    background_color="black",
+    height=200,
+    width=500,
+    drawing_mode="freedraw",
+    key="canvas_exhibition",
+)
 
-if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("L") # Convert to grayscale
-    img_np = np.array(image)
-    
-    # Thresholding to make it binary (white digits on black background like MNIST)
-    _, img_thresh = cv2.threshold(img_np, 120, 255, cv2.THRESH_BINARY_INV)
-    
-    st.image(uploaded_file, caption="Uploaded Image", width=300)
-
-    if st.button("Predict Image", type="primary"):
-        boxes = extract_digit_bounding_boxes(img_thresh)
-        if not boxes:
-            st.warning("No valid digits detected! Make sure digits are clear against a light background.")
+if st.button("Predict Canvas", type="primary"):
+    if canvas_result.image_data is not None:
+        # Streamlit canvas returns RGBA numpy array
+        img_rgba = canvas_result.image_data.astype(np.uint8)
+        
+        # Convert to grayscale
+        if len(img_rgba.shape) == 3 and img_rgba.shape[2] == 4:
+            img_gray = cv2.cvtColor(img_rgba, cv2.COLOR_RGBA2GRAY)
         else:
-            rf_digits, mlp_digits, cnn_digits, ens_digits = [], [], [], []
-            for (x, y, w, h) in boxes:
-                digit_crop = img_thresh[y:y+h, x:x+w]
-                digit_norm = preprocess_digit_mnist_standard(digit_crop)
-                
-                flat_pca = pca_100.transform(digit_norm.reshape(1, 784))
-                cnn_input = digit_norm.reshape(1, 28, 28, 1)
+            img_gray = cv2.cvtColor(img_rgba, cv2.COLOR_RGB2GRAY)
+        
+        if np.max(img_gray) == 0:
+            st.warning("Please draw digits on the canvas first!")
+        else:
+            boxes = extract_digit_bounding_boxes(img_gray)
+            if not boxes:
+                st.warning("No valid digits detected! Please draw them clearer.")
+            else:
+                rf_digits, mlp_digits, cnn_digits, ens_digits = [], [], [], []
+                for (x, y, w, h) in boxes:
+                    digit_crop = img_gray[y:y+h, x:x+w]
+                    digit_norm = preprocess_digit_mnist_standard(digit_crop)
+                    
+                    flat_pca = pca_100.transform(digit_norm.reshape(1, 784))
+                    cnn_input = digit_norm.reshape(1, 28, 28, 1)
 
-                rf_prob = rf_model.predict_proba(flat_pca)[0]
-                mlp_prob = mlp_model.predict_proba(flat_pca)[0]
-                cnn_prob = cnn_model.predict(cnn_input, verbose=0)[0]
+                    rf_prob = rf_model.predict_proba(flat_pca)[0]
+                    mlp_prob = mlp_model.predict_proba(flat_pca)[0]
+                    cnn_prob = cnn_model.predict(cnn_input, verbose=0)[0]
 
-                rf_digits.append(str(np.argmax(rf_prob)))
-                mlp_digits.append(str(np.argmax(mlp_prob)))
-                cnn_digits.append(str(np.argmax(cnn_prob)))
+                    rf_digits.append(str(np.argmax(rf_prob)))
+                    mlp_digits.append(str(np.argmax(mlp_prob)))
+                    cnn_digits.append(str(np.argmax(cnn_prob)))
 
-                ens_prob = (rf_prob * 0.25) + (mlp_prob * 0.25) + (cnn_prob * 0.50)
-                ens_digits.append(str(np.argmax(ens_prob)))
+                    ens_prob = (rf_prob * 0.25) + (mlp_prob * 0.25) + (cnn_prob * 0.50)
+                    ens_digits.append(str(np.argmax(ens_prob)))
 
-            st.success(f"**🏆 Ensemble Voting Output (98.94% Acc):** {''.join(ens_digits)}")
-            col1, col2, col3 = st.columns(3)
-            col1.info(f"🌲 Random Forest: {''.join(rf_digits)}")
-            col2.info(f"🧠 MLP Neural Net: {''.join(mlp_digits)}")
-            col3.info(f"📷 TensorFlow CNN: {''.join(cnn_digits)}")
+                st.success(f"**🏆 Ensemble Voting Output (98.94% Acc):** {''.join(ens_digits)}")
+                col1, col2, col3 = st.columns(3)
+                col1.info(f"🌲 Random Forest: {''.join(rf_digits)}")
+                col2.info(f"🧠 MLP Neural Net: {''.join(mlp_digits)}")
+                col3.info(f"📷 TensorFlow CNN: {''.join(cnn_digits)}")
