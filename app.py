@@ -75,10 +75,8 @@ canvas_result = st_canvas(
 
 if st.button("Predict Canvas", type="primary"):
     if canvas_result.image_data is not None:
-        # Streamlit canvas returns RGBA numpy array
         img_rgba = canvas_result.image_data.astype(np.uint8)
         
-        # Convert to grayscale
         if len(img_rgba.shape) == 3 and img_rgba.shape[2] == 4:
             img_gray = cv2.cvtColor(img_rgba, cv2.COLOR_RGBA2GRAY)
         else:
