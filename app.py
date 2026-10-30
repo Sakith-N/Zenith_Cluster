@@ -15,7 +15,7 @@ st.write("Draw digits on the canvas below and click **Predict**.")
 # --- Load Models (Cached for speed) ---
 @st.cache_resource
 def load_models():
-    rf = joblib.load('rf_model.pkl')
+    rf = joblib.load('rf_model_lite.pkl')
     mlp = joblib.load('mlp_model.pkl')
     cnn = tf.keras.models.load_model('cnn_model.h5')
     pca = joblib.load('pca_100.pkl')
